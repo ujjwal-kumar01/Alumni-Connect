@@ -18,6 +18,6 @@ router.get('/:userId1/:userId2', getMessages);
 router.post('/mark-read', markMessagesAsRead);
 
 // Get unread message counts for a user
-router.get('/unread/:userId', getUnreadMessageCount);
+router.get('/unread/:userId/hello', getUnreadMessageCount);
 
 export default router;

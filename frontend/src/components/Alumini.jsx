@@ -33,8 +33,9 @@ const FindAlumni = () => {
     const fetchUnreadCounts = async () => {
       console.log(loggedInUser)
       try {
+        console.log("calling request")
         const res = await axios.get(
-          `http://localhost:8000/api/v1/message/unread/${loggedInUser._id}`
+          `http://localhost:8000/api/v1/message/unread/${loggedInUser._id}/hello`
         );
         console.log(res)
         setUnreadCounts(res.data.unreadCounts || {});
@@ -159,7 +160,7 @@ const FindAlumni = () => {
                   >
                     Chat Now
                     {unreadCount > 0 && (
-                      <span className="absolute top-[-6px] right-[-6px] bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                      <span className="absolute top-[-6px] right-[-6px] bg-red-400 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
                         {unreadCount > 9 ? "9+" : unreadCount}
                       </span>
                     )}

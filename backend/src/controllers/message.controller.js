@@ -27,6 +27,7 @@ export const sendMessage = async (req, res) => {
 
 // Get all messages between two users
 export const getMessages = async (req, res) => {
+  console.log("getting messages")
   try {
     const { userId1, userId2 } = req.params;
 
@@ -73,7 +74,7 @@ export const markMessagesAsRead = async (req, res) => {
 
 // Get unread message count per sender for a user
 export const getUnreadMessageCount = async (req, res) => {
-  console.log("hello")
+  // console.log("hello unread message function is called")
   try {
     const { userId } = req.params;
     console.log("Fetching unread counts for:", userId);
@@ -85,7 +86,7 @@ export const getUnreadMessageCount = async (req, res) => {
     const unreadCounts = await Message.aggregate([
       {
         $match: {
-          receiverId: new mongoose.Types.ObjectId(userId),
+          receiverId: mongoose.Types.ObjectId.createFromHexString(userId),
           read: false
         }
       },
@@ -96,6 +97,7 @@ export const getUnreadMessageCount = async (req, res) => {
         }
       }
     ]);
+    
 
     const formatted = {};
     unreadCounts.forEach((item) => {

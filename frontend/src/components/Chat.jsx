@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -23,6 +23,24 @@ const Chat = () => {
 
   const chatContainerRef = useRef(null);
 
+  // 👉 markAsRead defined with useCallback so it's not stale
+  const markAsRead = useCallback(async (senderId, receiverId, messageId) => {
+    console.log("Reading message started");
+    try {
+      await axios.post('http://localhost:8000/api/v1/message/mark-read', {
+        senderId,
+        receiverId
+      });
+      setChat((prev) =>
+        prev.map((msg) =>
+          msg._id === messageId ? { ...msg, read: true } : msg
+        )
+      );
+    } catch (error) {
+      console.error("Error marking messages as read:", error);
+    }
+  }, []);
+
   useEffect(() => {
     const loggedInUser = JSON.parse(localStorage.getItem('user'));
     setUser(loggedInUser);
@@ -33,11 +51,16 @@ const Chat = () => {
       socket.emit('userOnline', loggedInUser._id);
     }
 
-    // ✅ Receive message
-    socket.on('receiveMessage', (msgData) => {
+    socket.on('receiveMessage', async (msgData) => {
+      if (!loggedInUser) return;
+      
+      console.log("Socket received message:", msgData);
+      console.log("loggedInUser? ", loggedInUser);
+      console.log("Checking match:", msgData.receiverId, loggedInUser?._id);
+      
       const isRelevant =
-        (msgData.senderId === loggedInUser?._id && msgData.receiverId === receiverId) ||
-        (msgData.senderId === receiverId && msgData.receiverId === loggedInUser?._id);
+        (msgData.senderId === loggedInUser._id && msgData.receiverId === receiverId) ||
+        (msgData.senderId === receiverId && msgData.receiverId === loggedInUser._id);
 
       if (isRelevant) {
         setChat((prev) => {
@@ -46,13 +69,12 @@ const Chat = () => {
         });
 
         if (msgData.receiverId === loggedInUser._id) {
-          markAsRead(msgData.senderId, loggedInUser._id, msgData._id);
-          socket.emit('messageRead', { ...msgData, read: true });
+          await markAsRead(msgData.senderId, loggedInUser._id, msgData._id);
+          socket.emit('messageRead', { messageId: msgData._id });
         }
       }
     });
 
-    // ✅ Typing indicators
     socket.on('userTyping', ({ senderId }) => {
       if (senderId === receiverId) setTypingUser(true);
     });
@@ -61,7 +83,6 @@ const Chat = () => {
       if (senderId === receiverId) setTypingUser(false);
     });
 
-    // ✅ Delivered indicator
     socket.on('messageDelivered', ({ messageId }) => {
       setChat((prev) =>
         prev.map((msg) =>
@@ -70,7 +91,6 @@ const Chat = () => {
       );
     });
 
-    // ✅ Read indicator
     socket.on('messageRead', ({ messageId }) => {
       setChat((prev) =>
         prev.map((msg) =>
@@ -96,7 +116,7 @@ const Chat = () => {
       socket.off('userOffline');
       socket.off('userOnline');
     };
-  }, [receiverId]);
+  }, [receiverId, markAsRead]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -130,25 +150,8 @@ const Chat = () => {
     }
   };
 
-  const markAsRead = async (senderId, receiverId, messageId) => {
-    try {
-      await axios.post('http://localhost:8000/api/v1/message/mark-read', {
-        senderId,
-        receiverId
-      });
-      // Update local state as well
-      setChat((prev) =>
-        prev.map((msg) =>
-          msg._id === messageId ? { ...msg, read: true } : msg
-        )
-      );
-    } catch (error) {
-      console.error("Error marking messages as read:", error);
-    }
-  };
-
   const handleTyping = () => {
-    if (!isTyping) {
+    if (!isTyping && user) {
       setIsTyping(true);
       socket.emit("typing", { senderId: user._id, receiverId });
       setTimeout(() => {
