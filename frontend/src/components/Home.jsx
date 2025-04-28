@@ -97,10 +97,10 @@ const features = [
     site: "/jobs",
   },
   {
-    title: "AI Chatbot Assistant",
-    description: "Get instant answers to questions about the platform and opportunities.",
-    site: "/chatbot", // Create a chatbot route/component if not already
-  },
+    title: "College Blogs & Research Papers",
+    description: "Explore insightful blogs and groundbreaking research published by our students, alumni, and faculty at IIIT Una.",
+    site: "/collegeBlogs", // Ensure this route/component is created and linked properly
+  },  
   {
     title: "Give Back",
     description: "Support students through mentorship and events.",

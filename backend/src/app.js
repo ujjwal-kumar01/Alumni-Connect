@@ -29,6 +29,7 @@ import jobRoutes from './routes/job.routes.js';
 import applicationRoutes from './routes/application.routes.js';
 import razorpayRoutes from './routes/razorpay.routes.js';
 import globalChatRoutes from './routes/globalChat.routes.js'; // keep global chat separate
+import blogsRoute from './routes/blogs.routes.js'
 
 // Mounting Routes
 app.use('/api/v1/user', userRoutes);
@@ -38,6 +39,7 @@ app.use('/api/v1/jobs', jobRoutes);
 app.use('/api/v1/applications', applicationRoutes);
 app.use('/api/v1/razorpay', razorpayRoutes);
 app.use('/api/global-chat', globalChatRoutes); // separate path
+app.use('/api/v1/blogs', blogsRoute);
 
 // Root route
 app.get('/', (req, res) => {

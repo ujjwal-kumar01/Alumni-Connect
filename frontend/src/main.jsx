@@ -23,9 +23,10 @@ import JobBoard from './components/JobBoard.jsx';
 import PostJob from './components/PostJob.jsx';
 import GiveBack from './components/GiveBack.jsx';
 import DonateSponsor from './components/DonateSponsor.jsx'; // ✅ Import donation component
-import Chatbot from './components/Chatbot.jsx'; // 👈 import it
+import CollegeBlogs from './components/CollegeBlogs.jsx'; // 👈 import it
 import Applicants from './components/Applicants.jsx';
 import GlobalChat from './components/Globalchat.jsx';
+import AddBlogPaper from './components/AddBlogPapers.jsx';
 
 
 
@@ -47,9 +48,10 @@ const router = createBrowserRouter(
       <Route path="post-job" element={<PostJob />} />
       <Route path="give-back" element={<GiveBack />} />
       <Route path="donate" element={<DonateSponsor />} /> {/* ✅ Donate page */}
-      <Route path="chatbot" element={<Chatbot />} />  
+      <Route path="collegeBlogs" element={<CollegeBlogs />} />  
       <Route path="/jobs/:jobId/applicants" element={<Applicants />} />
       <Route path="/global-chat" element={<GlobalChat  />} />
+      <Route path="/add-blog-paper" element={<AddBlogPaper  />} />
     </Route>
   )
 );
