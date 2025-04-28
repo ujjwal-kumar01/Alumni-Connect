@@ -7,8 +7,6 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 
 dayjs.extend(relativeTime);
 
-const socket = io('http://localhost:8000');
-
 const Chat = () => {
   const { receiverId } = useParams();
   const navigate = useNavigate();
@@ -22,10 +20,10 @@ const Chat = () => {
   const [lastSeen, setLastSeen] = useState('');
 
   const chatContainerRef = useRef(null);
+  const socketRef = useRef(null); // <-- socket as ref
 
-  // 👉 markAsRead defined with useCallback so it's not stale
   const markAsRead = useCallback(async (senderId, receiverId, messageId) => {
-    console.log("Reading message started");
+    console.log("markasread function");
     try {
       await axios.post('http://localhost:8000/api/v1/message/mark-read', {
         senderId,
@@ -41,23 +39,51 @@ const Chat = () => {
     }
   }, []);
 
+  const fetchMessages = async (userId1, userId2) => {
+    try {
+      const res = await axios.get(`http://localhost:8000/api/v1/message/${userId1}/${userId2}`);
+      const messages = res.data.messages;
+      setChat(messages);
+
+      // Mark all unread messages as read
+      const unreadMessages = messages.filter((msg) => msg.receiverId === userId1 && !msg.read);
+      if (unreadMessages.length > 0) {
+        await markAsRead(userId2, userId1, unreadMessages.map((msg) => msg._id));
+        unreadMessages.forEach((msg) => {
+          socketRef.current.emit('messageRead', { messageId: msg._id });
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    }
+  };
+
+  const fetchReceiver = async (id) => {
+    try {
+      const res = await axios.get(`http://localhost:8000/api/v1/user/${id}`);
+      setReceiverData(res.data.user);
+      setLastSeen(res.data.user.lastSeen);
+    } catch (error) {
+      console.error("Error fetching receiver:", error);
+    }
+  };
+
   useEffect(() => {
     const loggedInUser = JSON.parse(localStorage.getItem('user'));
     setUser(loggedInUser);
 
-    if (loggedInUser && receiverId) {
-      fetchMessages(loggedInUser._id, receiverId);
-      fetchReceiver(receiverId);
-      socket.emit('userOnline', loggedInUser._id);
+    socketRef.current = io('http://localhost:8000'); // initialize socket
+
+    if (loggedInUser) {
+      socketRef.current.emit('userOnline', loggedInUser._id);
     }
 
+    const socket = socketRef.current;
+
     socket.on('receiveMessage', async (msgData) => {
+      console.log(" socket receiveMessage ");
       if (!loggedInUser) return;
-      
-      console.log("Socket received message:", msgData);
-      console.log("loggedInUser? ", loggedInUser);
-      console.log("Checking match:", msgData.receiverId, loggedInUser?._id);
-      
+
       const isRelevant =
         (msgData.senderId === loggedInUser._id && msgData.receiverId === receiverId) ||
         (msgData.senderId === receiverId && msgData.receiverId === loggedInUser._id);
@@ -84,6 +110,7 @@ const Chat = () => {
     });
 
     socket.on('messageDelivered', ({ messageId }) => {
+      console.log(" socket messageDelivered ");
       setChat((prev) =>
         prev.map((msg) =>
           msg._id === messageId ? { ...msg, delivered: true } : msg
@@ -92,6 +119,7 @@ const Chat = () => {
     });
 
     socket.on('messageRead', ({ messageId }) => {
+      console.log(" socket messageread2 ");
       setChat((prev) =>
         prev.map((msg) =>
           msg._id === messageId ? { ...msg, read: true } : msg
@@ -108,19 +136,22 @@ const Chat = () => {
     });
 
     return () => {
-      socket.off('receiveMessage');
-      socket.off('userTyping');
-      socket.off('userStoppedTyping');
-      socket.off('messageDelivered');
-      socket.off('messageRead');
-      socket.off('userOffline');
-      socket.off('userOnline');
+      if (socket) {
+        socket.disconnect();
+      }
     };
   }, [receiverId, markAsRead]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (user && receiverId) {
+      fetchMessages(user._id, receiverId);
       fetchReceiver(receiverId);
+    }
+  }, [user, receiverId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (receiverId) fetchReceiver(receiverId);
     }, 60000);
     return () => clearInterval(interval);
   }, [receiverId]);
@@ -131,32 +162,13 @@ const Chat = () => {
     }
   }, [chat]);
 
-  const fetchMessages = async (userId1, userId2) => {
-    try {
-      const res = await axios.get(`http://localhost:8000/api/v1/message/${userId1}/${userId2}`);
-      setChat(res.data.messages);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-    }
-  };
-
-  const fetchReceiver = async (id) => {
-    try {
-      const res = await axios.get(`http://localhost:8000/api/v1/user/${id}`);
-      setReceiverData(res.data.user);
-      setLastSeen(res.data.user.lastSeen);
-    } catch (error) {
-      console.error("Error fetching receiver:", error);
-    }
-  };
-
   const handleTyping = () => {
     if (!isTyping && user) {
       setIsTyping(true);
-      socket.emit("typing", { senderId: user._id, receiverId });
+      socketRef.current.emit("typing", { senderId: user._id, receiverId });
       setTimeout(() => {
         setIsTyping(false);
-        socket.emit("stopTyping", { senderId: user._id, receiverId });
+        socketRef.current.emit("stopTyping", { senderId: user._id, receiverId });
       }, 2000);
     }
   };
@@ -176,7 +188,7 @@ const Chat = () => {
       const savedMessage = response.data.message;
 
       setChat((prev) => [...prev, savedMessage]);
-      socket.emit('sendMessage', savedMessage);
+      socketRef.current.emit('sendMessage', savedMessage);
       setMessage('');
     } catch (error) {
       console.error("Error sending message:", error);

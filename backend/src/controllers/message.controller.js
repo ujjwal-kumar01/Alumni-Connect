@@ -50,6 +50,7 @@ export const getMessages = async (req, res) => {
 
 // Mark messages from sender as read by receiver
 export const markMessagesAsRead = async (req, res) => {
+  console.log("reading messages")
   try {
     const { senderId, receiverId } = req.body;
 

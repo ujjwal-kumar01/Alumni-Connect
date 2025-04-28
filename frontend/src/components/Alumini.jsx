@@ -16,29 +16,28 @@ const FindAlumni = () => {
   useEffect(() => {
     const fetchAlumni = async () => {
       try {
-        const res = await axios.get("http://localhost:8000/api/v1/user/all");
-        const filtered = res.data.users.filter(
+        const { data } = await axios.get("http://localhost:8000/api/v1/user/all");
+        const filteredAlumni = data.users.filter(
           (alumni) => alumni._id !== loggedInUser?._id
         );
-        setAlumniList(filtered);
+        setAlumniList(filteredAlumni);
       } catch (error) {
         console.error("Error fetching alumni:", error);
       }
     };
 
-    fetchAlumni();
+    if (loggedInUser?._id) {
+      fetchAlumni();
+    }
   }, [loggedInUser?._id]);
 
   useEffect(() => {
     const fetchUnreadCounts = async () => {
-      console.log(loggedInUser)
       try {
-        console.log("calling request")
-        const res = await axios.get(
+        const { data } = await axios.get(
           `http://localhost:8000/api/v1/message/unread/${loggedInUser._id}/hello`
         );
-        console.log(res)
-        setUnreadCounts(res.data.unreadCounts || {});
+        setUnreadCounts(data.unreadCounts || {});
       } catch (error) {
         console.error("Error fetching unread message counts:", error);
       }
@@ -47,7 +46,7 @@ const FindAlumni = () => {
     if (loggedInUser?._id) {
       fetchUnreadCounts();
     }
-  }, [alumniList, loggedInUser?._id]);
+  }, [loggedInUser?._id, alumniList.length]);
 
   const resetFilters = () => {
     setSearch("");
@@ -60,12 +59,19 @@ const FindAlumni = () => {
   const uniqueYears = [...new Set(alumniList.map(a => a.year).filter(Boolean))];
   const uniqueLocations = [...new Set(alumniList.map(a => a.location).filter(Boolean))];
 
-  const filteredAlumni = alumniList.filter((alumni) =>
+  const filteredAlumni = alumniList.filter((alumni) => 
     alumni?.fullName?.toLowerCase().includes(search.toLowerCase()) &&
-    (companyFilter === "" || alumni?.company?.toLowerCase() === companyFilter.toLowerCase()) &&
-    (yearFilter === "" || alumni?.year?.toString() === yearFilter) &&
-    (locationFilter === "" || alumni?.location?.toLowerCase() === locationFilter.toLowerCase())
+    (companyFilter ? alumni?.company?.toLowerCase() === companyFilter.toLowerCase() : true) &&
+    (yearFilter ? alumni?.year?.toString() === yearFilter : true) &&
+    (locationFilter ? alumni?.location?.toLowerCase() === locationFilter.toLowerCase() : true)
   );
+
+  // 🔥 Sort alumni after filtering: those with unread messages first
+  const sortedAlumni = [...filteredAlumni].sort((a, b) => {
+    const unreadA = unreadCounts[a._id] || 0;
+    const unreadB = unreadCounts[b._id] || 0;
+    return unreadB - unreadA; // Higher unread first
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-100 via-blue-100 to-blue-100 p-6">
@@ -128,8 +134,8 @@ const FindAlumni = () => {
 
       {/* Alumni Cards */}
       <div className="grid grid-cols-1 gap-6">
-        {filteredAlumni.length > 0 ? (
-          filteredAlumni.map((alumni) => {
+        {sortedAlumni.length > 0 ? (
+          sortedAlumni.map((alumni) => {
             const unreadCount = unreadCounts[alumni._id] || 0;
 
             return (
@@ -160,7 +166,7 @@ const FindAlumni = () => {
                   >
                     Chat Now
                     {unreadCount > 0 && (
-                      <span className="absolute top-[-6px] right-[-6px] bg-red-400 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                      <span className="absolute -top-2 -right-2 bg-red-400 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
                         {unreadCount > 9 ? "9+" : unreadCount}
                       </span>
                     )}
