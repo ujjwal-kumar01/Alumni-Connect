@@ -22,18 +22,33 @@ const io = new Server(server, {
 
 export { io };
 
+// This will track user connections
+let userSockets = {}; // A map to store user sockets with userId as key
+
 // Handle socket connections
 io.on('connection', (socket) => {
   const userId = socket.handshake.query.userId?.toString();
 
   if (userId) {
     socket.join(userId);
-    io.emit('userOnline', userId);
+    userSockets[userId] = { socketId: socket.id, lastSeen: new Date() };
+
+    // Update user's lastSeen when they connect
+    User.findByIdAndUpdate(userId, { lastSeen: new Date() }, { new: true }, (err, user) => {
+      if (err) console.log(err);
+      else console.log(`User ${userId} last seen updated`);
+    });
+
+    io.emit('userOnline', userId); // Emit user online status
 
     socket.on('disconnect', async () => {
       try {
-        await User.findByIdAndUpdate(userId, { lastSeen: new Date() });
-        io.emit('userOffline', userId);
+        // Update the lastSeen time when the user disconnects
+        userSockets[userId].lastSeen = new Date();
+        await User.findByIdAndUpdate(userId, { lastSeen: userSockets[userId].lastSeen }, { new: true });
+
+        io.emit('userOffline', userId); // Emit user offline status
+        delete userSockets[userId]; // Remove from userSockets map
       } catch (err) {
         console.error('Error updating lastSeen:', err.message);
       }

@@ -18,16 +18,16 @@ const Chat = () => {
   const [typingUser, setTypingUser] = useState(false);
   const [receiverData, setReceiverData] = useState(null);
   const [lastSeen, setLastSeen] = useState('');
+  const [isOnline, setIsOnline] = useState(false);
 
   const chatContainerRef = useRef(null);
-  const socketRef = useRef(null); // <-- socket as ref
+  const socketRef = useRef(null);
 
   const markAsRead = useCallback(async (senderId, receiverId, messageId) => {
-    console.log("markasread function");
     try {
       await axios.post('http://localhost:8000/api/v1/message/mark-read', {
         senderId,
-        receiverId
+        receiverId,
       });
       setChat((prev) =>
         prev.map((msg) =>
@@ -35,18 +35,29 @@ const Chat = () => {
         )
       );
     } catch (error) {
-      console.error("Error marking messages as read:", error);
+      console.error('Error marking messages as read:', error);
     }
   }, []);
 
   const fetchMessages = async (userId1, userId2) => {
     try {
-      const res = await axios.get(`http://localhost:8000/api/v1/message/${userId1}/${userId2}`);
+      const res = await axios.get(
+        `http://localhost:8000/api/v1/message/${userId1}/${userId2}`
+      );
       const messages = res.data.messages;
       setChat(messages);
 
-      // Mark all unread messages as read
-      const unreadMessages = messages.filter((msg) => msg.receiverId === userId1 && !msg.read);
+      const messagesWithSeenAt = messages.filter(message => message.seenAt !== null);
+
+      if (messagesWithSeenAt.length > 0) {
+        const lastMessage = messagesWithSeenAt[messagesWithSeenAt.length - 1];
+        setLastSeen(lastMessage.seenAt);
+      }
+
+
+      const unreadMessages = messages.filter(
+        (msg) => msg.receiverId === userId1 && !msg.read
+      );
       if (unreadMessages.length > 0) {
         await markAsRead(userId2, userId1, unreadMessages.map((msg) => msg._id));
         unreadMessages.forEach((msg) => {
@@ -54,7 +65,7 @@ const Chat = () => {
         });
       }
     } catch (error) {
-      console.error("Error fetching messages:", error);
+      console.error('Error fetching messages:', error);
     }
   };
 
@@ -62,9 +73,8 @@ const Chat = () => {
     try {
       const res = await axios.get(`http://localhost:8000/api/v1/user/${id}`);
       setReceiverData(res.data.user);
-      setLastSeen(res.data.user.lastSeen);
     } catch (error) {
-      console.error("Error fetching receiver:", error);
+      console.error('Error fetching receiver:', error);
     }
   };
 
@@ -72,7 +82,7 @@ const Chat = () => {
     const loggedInUser = JSON.parse(localStorage.getItem('user'));
     setUser(loggedInUser);
 
-    socketRef.current = io('http://localhost:8000'); // initialize socket
+    socketRef.current = io('http://localhost:8000');
 
     if (loggedInUser) {
       socketRef.current.emit('userOnline', loggedInUser._id);
@@ -81,7 +91,6 @@ const Chat = () => {
     const socket = socketRef.current;
 
     socket.on('receiveMessage', async (msgData) => {
-      console.log(" socket receiveMessage ");
       if (!loggedInUser) return;
 
       const isRelevant =
@@ -110,7 +119,6 @@ const Chat = () => {
     });
 
     socket.on('messageDelivered', ({ messageId }) => {
-      console.log(" socket messageDelivered ");
       setChat((prev) =>
         prev.map((msg) =>
           msg._id === messageId ? { ...msg, delivered: true } : msg
@@ -119,7 +127,6 @@ const Chat = () => {
     });
 
     socket.on('messageRead', ({ messageId }) => {
-      console.log(" socket messageread2 ");
       setChat((prev) =>
         prev.map((msg) =>
           msg._id === messageId ? { ...msg, read: true } : msg
@@ -127,12 +134,20 @@ const Chat = () => {
       );
     });
 
-    socket.on('userOffline', (userId) => {
-      if (userId === receiverId) fetchReceiver(receiverId);
+    socket.on('userOnline', (userId) => {
+      if (userId === receiverId) {
+        setIsOnline(true);
+        // Set lastSeen to current time when receiver is online
+        setLastSeen(dayjs().toISOString());
+      }
     });
 
-    socket.on('userOnline', (userId) => {
-      if (userId === receiverId) fetchReceiver(receiverId);
+    socket.on('userOffline', (userId) => {
+      if (userId === receiverId) {
+        setIsOnline(false);
+        // Optionally reset or fetch the last seen from the server if needed
+        fetchReceiver(receiverId);
+      }
     });
 
     return () => {
@@ -141,6 +156,7 @@ const Chat = () => {
       }
     };
   }, [receiverId, markAsRead]);
+
 
   useEffect(() => {
     if (user && receiverId) {
@@ -165,10 +181,10 @@ const Chat = () => {
   const handleTyping = () => {
     if (!isTyping && user) {
       setIsTyping(true);
-      socketRef.current.emit("typing", { senderId: user._id, receiverId });
+      socketRef.current.emit('typing', { senderId: user._id, receiverId });
       setTimeout(() => {
         setIsTyping(false);
-        socketRef.current.emit("stopTyping", { senderId: user._id, receiverId });
+        socketRef.current.emit('stopTyping', { senderId: user._id, receiverId });
       }, 2000);
     }
   };
@@ -180,7 +196,7 @@ const Chat = () => {
       senderId: user._id,
       receiverId,
       content: message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     try {
@@ -191,7 +207,7 @@ const Chat = () => {
       socketRef.current.emit('sendMessage', savedMessage);
       setMessage('');
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error('Error sending message:', error);
     }
   };
 
@@ -209,16 +225,21 @@ const Chat = () => {
           onClick={() => navigate(`/profile/${receiverData._id}`)}
         >
           <img
-            src={receiverData.avatar || "/default-profile.png"}
+            src={receiverData.avatar || '/default-profile.png'}
             alt="Profile"
             className="w-10 h-10 rounded-full object-cover border"
           />
           <div>
-            <h2 className="font-semibold text-lg text-gray-800">{receiverData.fullName}</h2>
+            <h2 className="font-semibold text-lg text-gray-800 flex items-center gap-2">
+              {receiverData.fullName}
+              {isOnline && <span className="w-2 h-2 bg-green-500 rounded-full"></span>}
+            </h2>
             <span className="text-xs text-gray-500">
-              {lastSeen && dayjs().diff(lastSeen, 'minute') < 1
-                ? "Online"
-                : `Last seen: ${dayjs(lastSeen).fromNow()}`}
+              {isOnline
+                ? 'Online'
+                : lastSeen
+                  ? `Last seen: ${dayjs(lastSeen).fromNow()}`
+                  : 'offline'}
             </span>
           </div>
         </div>

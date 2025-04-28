@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { Message } from '../models/message.model.js';
+import { User } from '../models/user.model.js';
 
 // Send a message
 export const sendMessage = async (req, res) => {
@@ -10,15 +11,25 @@ export const sendMessage = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
+    // Create a new message object
     const newMessage = new Message({
       senderId,
       receiverId,
       content,
-      read: false
+      timestamp: new Date(),
+      read: false, // Initially, the message is unread
     });
 
+    // Save the message to the database
     await newMessage.save();
 
+    // Update the sender's lastSeen timestamp to current time
+    await User.findByIdAndUpdate(senderId, { lastSeen: new Date() });
+
+    // Optionally update receiver's lastSeen as well
+    await User.findByIdAndUpdate(receiverId, { lastSeen: new Date() });
+
+    // Return the new message in the response
     res.status(201).json({ success: true, message: newMessage });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -27,7 +38,6 @@ export const sendMessage = async (req, res) => {
 
 // Get all messages between two users
 export const getMessages = async (req, res) => {
-  console.log("getting messages")
   try {
     const { userId1, userId2 } = req.params;
 
@@ -42,7 +52,11 @@ export const getMessages = async (req, res) => {
       ]
     }).sort({ createdAt: 1 });
 
-    res.status(200).json({ success: true, messages });
+    // Get the timestamp of the last message (this will be used for lastSeen)
+    const lastMessage = messages[messages.length - 1];
+    const lastSeen = lastMessage ? lastMessage.timestamp : null;
+
+    res.status(200).json({ success: true, messages, lastSeen });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -50,7 +64,6 @@ export const getMessages = async (req, res) => {
 
 // Mark messages from sender as read by receiver
 export const markMessagesAsRead = async (req, res) => {
-  console.log("reading messages")
   try {
     const { senderId, receiverId } = req.body;
 
@@ -58,14 +71,20 @@ export const markMessagesAsRead = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing sender or receiver ID' });
     }
 
+    const now = new Date();
+
+    // Update read status and seenAt timestamp for all unread messages
     const result = await Message.updateMany(
       {
         senderId,
         receiverId,
         read: false
       },
-      { $set: { read: true } }
+      { $set: { read: true, seenAt: now } }  // mark as read + seenAt timestamp
     );
+
+    // Optionally update the receiver's lastSeen timestamp when they read the message
+    await User.findByIdAndUpdate(receiverId, { lastSeen: now });
 
     res.status(200).json({ success: true, updatedCount: result.modifiedCount });
   } catch (error) {
@@ -75,10 +94,8 @@ export const markMessagesAsRead = async (req, res) => {
 
 // Get unread message count per sender for a user
 export const getUnreadMessageCount = async (req, res) => {
-  // console.log("hello unread message function is called")
   try {
     const { userId } = req.params;
-    console.log("Fetching unread counts for:", userId);
 
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ success: false, message: 'Invalid or missing userId' });
@@ -99,7 +116,6 @@ export const getUnreadMessageCount = async (req, res) => {
       }
     ]);
     
-
     const formatted = {};
     unreadCounts.forEach((item) => {
       formatted[item._id] = item.count;
@@ -107,7 +123,6 @@ export const getUnreadMessageCount = async (req, res) => {
 
     res.status(200).json({ success: true, unreadCounts: formatted });
   } catch (error) {
-    console.error("Unread count error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

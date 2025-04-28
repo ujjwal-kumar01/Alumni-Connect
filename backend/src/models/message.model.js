@@ -23,7 +23,11 @@ const messageSchema = new mongoose.Schema(
     delivered: {
       type: Boolean,
       default: false
-    }
+    },
+    seenAt: {
+      type: Date,
+      default: null,
+     },
   },
   {
     timestamps: true // includes createdAt and updatedAt
