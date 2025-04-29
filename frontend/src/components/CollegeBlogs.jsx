@@ -61,4 +61,5 @@ const CollegeBlogs = () => {
   );
 };
 
+
 export default CollegeBlogs;
