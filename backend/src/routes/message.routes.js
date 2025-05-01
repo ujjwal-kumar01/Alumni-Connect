@@ -3,7 +3,8 @@ import {
   sendMessage,
   getMessages,
   markMessagesAsRead,
-  getUnreadMessageCount
+  getUnreadMessageCount,
+  getChatList
 } from '../controllers/message.controller.js';
 
 const router = express.Router();
@@ -19,5 +20,7 @@ router.post('/mark-read', markMessagesAsRead);
 
 // Get unread message counts for a user
 router.get('/unread/:userId/hello', getUnreadMessageCount);
+
+router.get('/chat-list', getChatList);
 
 export default router;

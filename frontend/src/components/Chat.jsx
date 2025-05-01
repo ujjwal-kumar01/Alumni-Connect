@@ -5,35 +5,30 @@ import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
 dayjs.extend(relativeTime);
 
 const Chat = () => {
   const { receiverId } = useParams();
   const navigate = useNavigate();
-
   const [message, setMessage] = useState('');
   const [chat, setChat] = useState([]);
   const [user, setUser] = useState(null);
-  const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(false);
   const [receiverData, setReceiverData] = useState(null);
   const [lastSeen, setLastSeen] = useState('');
   const [isOnline, setIsOnline] = useState(false);
+  const [chatList, setChatList] = useState([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const chatContainerRef = useRef(null);
   const socketRef = useRef(null);
 
-  const markAsRead = useCallback(async (senderId, receiverId, messageId) => {
+  const markAsRead = useCallback(async (senderId, receiverId, ids) => {
     try {
-      await axios.post('http://localhost:8000/api/v1/message/mark-read', {
-        senderId,
-        receiverId,
-      });
-      setChat((prev) =>
-        prev.map((msg) =>
-          msg._id === messageId ? { ...msg, read: true } : msg
-        )
-      );
+      await axios.post('http://localhost:8000/api/v1/message/mark-read', { senderId, receiverId });
+      setChat(prev => prev.map(msg => ids.includes(msg._id) ? { ...msg, read: true } : msg));
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
@@ -41,31 +36,23 @@ const Chat = () => {
 
   const fetchMessages = async (userId1, userId2) => {
     try {
-      const res = await axios.get(
-        `http://localhost:8000/api/v1/message/${userId1}/${userId2}`
-      );
+      const res = await axios.get(`http://localhost:8000/api/v1/message/${userId1}/${userId2}`);
       const messages = res.data.messages;
       setChat(messages);
 
-      const messagesWithSeenAt = messages.filter(message => message.seenAt !== null);
-
-      if (messagesWithSeenAt.length > 0) {
-        const lastMessage = messagesWithSeenAt[messagesWithSeenAt.length - 1];
-        setLastSeen(lastMessage.seenAt);
+      const unread = messages.filter(msg => msg.receiverId === userId1 && !msg.read);
+      if (unread.length) {
+        const ids = unread.map(m => m._id);
+        await markAsRead(userId2, userId1, ids);
+        ids.forEach(id => socketRef.current.emit('messageRead', { messageId: id }));
       }
 
-
-      const unreadMessages = messages.filter(
-        (msg) => msg.receiverId === userId1 && !msg.read
-      );
-      if (unreadMessages.length > 0) {
-        await markAsRead(userId2, userId1, unreadMessages.map((msg) => msg._id));
-        unreadMessages.forEach((msg) => {
-          socketRef.current.emit('messageRead', { messageId: msg._id });
-        });
+      const seenMsgs = messages.filter(msg => msg.seenAt !== null);
+      if (seenMsgs.length) {
+        setLastSeen(seenMsgs[seenMsgs.length - 1].seenAt);
       }
-    } catch (error) {
-      console.error('Error fetching messages:', error);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
     }
   };
 
@@ -73,39 +60,29 @@ const Chat = () => {
     try {
       const res = await axios.get(`http://localhost:8000/api/v1/user/${id}`);
       setReceiverData(res.data.user);
-    } catch (error) {
-      console.error('Error fetching receiver:', error);
+    } catch (err) {
+      console.error('Receiver fetch error:', err);
     }
   };
 
   useEffect(() => {
-    const loggedInUser = JSON.parse(localStorage.getItem('user'));
-    setUser(loggedInUser);
+    const storedUser = JSON.parse(localStorage.getItem('user'));
+    setUser(storedUser);
+    const socket = io('http://localhost:8000');
+    socketRef.current = socket;
 
-    socketRef.current = io('http://localhost:8000');
-
-    if (loggedInUser) {
-      socketRef.current.emit('userOnline', loggedInUser._id);
+    if (storedUser) {
+      socket.emit('userOnline', storedUser._id);
     }
 
-    const socket = socketRef.current;
+    socket.on('receiveMessage', async msg => {
+      if ((msg.senderId === storedUser._id && msg.receiverId === receiverId) ||
+          (msg.senderId === receiverId && msg.receiverId === storedUser._id)) {
+        setChat(prev => prev.some(m => m._id === msg._id) ? prev : [...prev, msg]);
 
-    socket.on('receiveMessage', async (msgData) => {
-      if (!loggedInUser) return;
-
-      const isRelevant =
-        (msgData.senderId === loggedInUser._id && msgData.receiverId === receiverId) ||
-        (msgData.senderId === receiverId && msgData.receiverId === loggedInUser._id);
-
-      if (isRelevant) {
-        setChat((prev) => {
-          const alreadyExists = prev.some((msg) => msg._id === msgData._id);
-          return alreadyExists ? prev : [...prev, msgData];
-        });
-
-        if (msgData.receiverId === loggedInUser._id) {
-          await markAsRead(msgData.senderId, loggedInUser._id, msgData._id);
-          socket.emit('messageRead', { messageId: msgData._id });
+        if (msg.receiverId === storedUser._id) {
+          await markAsRead(msg.senderId, storedUser._id, [msg._id]);
+          socket.emit('messageRead', { messageId: msg._id });
         }
       }
     });
@@ -113,50 +90,24 @@ const Chat = () => {
     socket.on('userTyping', ({ senderId }) => {
       if (senderId === receiverId) setTypingUser(true);
     });
-
     socket.on('userStoppedTyping', ({ senderId }) => {
       if (senderId === receiverId) setTypingUser(false);
     });
 
-    socket.on('messageDelivered', ({ messageId }) => {
-      setChat((prev) =>
-        prev.map((msg) =>
-          msg._id === messageId ? { ...msg, delivered: true } : msg
-        )
-      );
-    });
-
     socket.on('messageRead', ({ messageId }) => {
-      setChat((prev) =>
-        prev.map((msg) =>
-          msg._id === messageId ? { ...msg, read: true } : msg
-        )
-      );
+      setChat(prev => prev.map(m => m._id === messageId ? { ...m, read: true } : m));
     });
 
-    socket.on('userOnline', (userId) => {
-      if (userId === receiverId) {
-        setIsOnline(true);
-        // Set lastSeen to current time when receiver is online
-        setLastSeen(dayjs().toISOString());
-      }
-    });
-
-    socket.on('userOffline', (userId) => {
-      if (userId === receiverId) {
+    socket.on('userOnline', id => id === receiverId && setIsOnline(true));
+    socket.on('userOffline', id => {
+      if (id === receiverId) {
         setIsOnline(false);
-        // Optionally reset or fetch the last seen from the server if needed
         fetchReceiver(receiverId);
       }
     });
 
-    return () => {
-      if (socket) {
-        socket.disconnect();
-      }
-    };
+    return () => socket.disconnect();
   }, [receiverId, markAsRead]);
-
 
   useEffect(() => {
     if (user && receiverId) {
@@ -166,9 +117,22 @@ const Chat = () => {
   }, [user, receiverId]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (receiverId) fetchReceiver(receiverId);
-    }, 60000);
+    if (!user?._id) return;
+    const fetchChatList = async () => {
+      try {
+        const res = await axios.get('http://localhost:8000/api/v1/message/chat-list', {
+          params: { userId: user._id },
+        });
+        setChatList(res.data.chatList);
+      } catch (error) {
+        console.error('Error fetching chat list:', error);
+      }
+    };
+    fetchChatList();
+  }, [user]);
+
+  useEffect(() => {
+    const interval = setInterval(() => receiverId && fetchReceiver(receiverId), 60000);
     return () => clearInterval(interval);
   }, [receiverId]);
 
@@ -176,23 +140,18 @@ const Chat = () => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [chat]);
+  }, [chat, receiverId]);
 
   const handleTyping = () => {
-    if (!isTyping && user) {
-      setIsTyping(true);
+    if (user) {
       socketRef.current.emit('typing', { senderId: user._id, receiverId });
-      setTimeout(() => {
-        setIsTyping(false);
-        socketRef.current.emit('stopTyping', { senderId: user._id, receiverId });
-      }, 2000);
+      setTimeout(() => socketRef.current.emit('stopTyping', { senderId: user._id, receiverId }), 2000);
     }
   };
 
   const sendMessage = async () => {
-    if (!message.trim() || !user || !receiverId) return;
-
-    const msgData = {
+    if (!message.trim()) return;
+    const msg = {
       senderId: user._id,
       receiverId,
       content: message,
@@ -200,88 +159,114 @@ const Chat = () => {
     };
 
     try {
-      const response = await axios.post('http://localhost:8000/api/v1/message/send', msgData);
-      const savedMessage = response.data.message;
-
-      setChat((prev) => [...prev, savedMessage]);
-      socketRef.current.emit('sendMessage', savedMessage);
+      const { data } = await axios.post('http://localhost:8000/api/v1/message/send', msg);
+      setChat(prev => [...prev, data.message]);
+      socketRef.current.emit('sendMessage', data.message);
       setMessage('');
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch (err) {
+      console.error('Send error:', err);
     }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      sendMessage();
-    }
-  };
+  const handleKeyDown = e => e.key === 'Enter' && sendMessage();
 
   return (
-    <div className="p-4 max-w-xl mx-auto">
-      {receiverData && (
-        <div
-          className="flex items-center gap-4 mb-4 cursor-pointer"
-          onClick={() => navigate(`/profile/${receiverData._id}`)}
-        >
-          <img
-            src={receiverData.avatar || '/default-profile.png'}
-            alt="Profile"
-            className="w-10 h-10 rounded-full object-cover border"
-          />
-          <div>
-            <h2 className="font-semibold text-lg text-gray-800 flex items-center gap-2">
-              {receiverData.fullName}
-              {isOnline && <span className="w-2 h-2 bg-green-500 rounded-full"></span>}
-            </h2>
-            <span className="text-xs text-gray-500">
-              {isOnline
-                ? 'Online'
-                : lastSeen
-                  ? `Last seen: ${dayjs(lastSeen).fromNow()}`
-                  : 'offline'}
-            </span>
+    <div className="flex h-[90vh] bg-gray-50 text-gray-800 p-4 gap-4 ">
+      {isSidebarOpen && (
+        <div className="w-[30%] bg-gray-900 text-white flex flex-col rounded-xl shadow-lg relative h-[85vh]">
+          <div className="p-4 font-semibold text-lg border-b border-gray-700 flex justify-between items-center">
+            Chats
+            <button onClick={() => setIsSidebarOpen(false)} className="text-gray-300 hover:text-white">
+              <ChevronLeft />
+            </button>
+          </div>
+          <div className="overflow-y-auto h-full">
+            {chatList.length === 0 ? (
+              <div className="p-4 text-sm text-gray-300">No chats available.</div>
+            ) : (
+              chatList.map((chatItem) => {
+                const isActive = receiverId === chatItem._id;
+                return (
+                  <div
+                    key={chatItem._id}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-gray-800 ${
+                      isActive ? 'bg-gray-700' : 'hover:bg-gray-800'
+                    }`}
+                    onClick={() => navigate(`/chat/${chatItem._id}`)}
+                  >
+                    <img
+                      src={chatItem.avatar || '/default-profile.png'}
+                      alt="avatar"
+                      className="w-10 h-10 rounded-full"
+                    />
+                    <div>
+                      <h3 className="font-medium text-white">{chatItem.fullName}</h3>
+                      <p className="text-sm text-gray-400 truncate w-40">{chatItem.lastMessage}</p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
 
-      <div
-        ref={chatContainerRef}
-        className="h-[325px] overflow-y-auto bg-gray-100 rounded-lg p-4"
-      >
-        {chat.map((msg, idx) => (
-          <div key={idx} className={`mb-2 ${msg.senderId === user?._id ? 'text-right' : 'text-left'}`}>
-            <div className="inline-block px-3 py-2 rounded bg-blue-200 text-gray-900">
-              {msg.content}
-              {msg.senderId === user?._id && (
-                <span className="text-xs ml-2">
-                  {msg.read ? '✓✓' : msg.delivered ? '✓' : ''}
-                </span>
-              )}
+      {!isSidebarOpen && (
+        <button
+          onClick={() => setIsSidebarOpen(true)}
+          className="bg-gray-900 text-white px-2 py-1 rounded-lg h-fit self-start mt-2"
+        >
+          <ChevronRight />
+        </button>
+      )}
+
+      <div className="w-full md:w-[50%] mx-auto flex flex-col bg-white rounded-xl shadow-lg h-[85vh]">
+        {receiverData && (
+          <div className="flex items-center gap-3 p-4 border-b cursor-pointer" onClick={() => navigate(`/profile/${receiverData._id}`)}>
+            <img src={receiverData.avatar || '/default-profile.png'} alt="avatar" className="w-10 h-10 rounded-full" />
+            <div>
+              <h3 className="font-medium text-gray-800">{receiverData.fullName}</h3>
+              <p className="text-sm text-gray-500">
+                {isOnline ? 'Online' : lastSeen ? `Last seen ${dayjs(lastSeen).fromNow()}` : 'Offline'}
+              </p>
             </div>
           </div>
-        ))}
-        {typingUser && <p className="text-sm text-gray-500 italic">Typing...</p>}
-      </div>
+        )}
 
-      <div className="mt-4 flex">
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => {
-            setMessage(e.target.value);
-            handleTyping();
-          }}
-          onKeyDown={handleKeyDown}
-          className="flex-1 border rounded-l px-3 py-2"
-          placeholder="Type your message..."
-        />
-        <button
-          onClick={sendMessage}
-          className="bg-blue-600 text-white px-4 py-2 rounded-r"
-        >
-          Send
-        </button>
+        <div className="flex-1 p-4 overflow-y-auto bg-gray-100" ref={chatContainerRef}>
+          {chat.map((msg, idx) => (
+            <div key={idx} className={`mb-3 flex ${msg.senderId === user?._id ? 'justify-end' : 'justify-start'}`}>
+              <div className={`px-4 py-2 rounded-xl max-w-[60%] shadow ${
+                msg.senderId === user?._id ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border'
+              }`}>
+                <span>{msg.content}</span>
+                {msg.senderId === user?._id && (
+                  <span className="text-xs ml-2">{msg.read ? '✓✓' : '✓'}</span>
+                )}
+              </div>
+            </div>
+          ))}
+          {typingUser && (
+            <div className="text-sm italic text-gray-500">Typing...</div>
+          )}
+        </div>
+
+        <div className="flex items-center p-4 border-t">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => { setMessage(e.target.value); handleTyping(); }}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message..."
+            className="flex-1 px-4 py-2 border rounded-l-lg focus:outline-none"
+          />
+          <button
+            onClick={sendMessage}
+            className="bg-blue-600 text-white px-4 py-2 rounded-r-lg hover:bg-blue-700"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ export default function Home() {
   const isLoggedIn = !!localStorage.getItem("token");
 
   return (
-    <div className="bg-gray-100 min-h-screen ">
+    <div  className="bg-gray-100 min-h-screen ">
       {/* Hero Section */}
       <header
         className="bg-black text-white text-center py-16"

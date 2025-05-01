@@ -126,3 +126,79 @@ export const getUnreadMessageCount = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const getChatList = async (req, res) => {
+  const { userId } = req.query;
+
+  try {
+    // const currentUserId = new mongoose.Types.ObjectId(userId); // ✅ Use `new` keyword
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user ID");
+    }
+    const currentUserId = new mongoose.Types.ObjectId(userId);
+    
+    const messages = await Message.aggregate([
+      {
+        $match: {
+          $or: [
+            { senderId: currentUserId },
+            { receiverId: currentUserId }
+          ]
+        }
+      },
+      {
+        $addFields: {
+          otherUserId: {
+            $cond: [
+              { $eq: ['$senderId', currentUserId] },
+              '$receiverId',
+              '$senderId'
+            ]
+          }
+        }
+      },
+      {
+        $sort: { createdAt: -1 } // Sort to get the latest message per user
+      },
+      {
+        $group: {
+          _id: '$otherUserId',
+          lastMessage: { $first: '$content' },
+          lastMessageTime: { $first: '$createdAt' }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      {
+        $unwind: {
+          path: '$user',
+          preserveNullAndEmptyArrays: false // make sure nulls are excluded
+        }
+      },
+      
+      {
+        $project: {
+          receiverId: '$_id',
+          fullName: '$user.fullName',
+          avatar: '$user.avatar',
+          lastMessage: 1,
+          lastMessageTime: 1
+        }
+      },
+      {
+        $sort: { lastMessageTime: -1 }
+      }
+    ]);
+
+    res.status(200).json({ chatList: messages });
+  } catch (error) {
+    console.error('Error fetching chat list:', error);
+    res.status(500).json({ error: 'Failed to fetch chat list' });
+  }
+};
