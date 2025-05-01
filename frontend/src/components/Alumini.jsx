@@ -141,7 +141,7 @@ const FindAlumni = () => {
             return (
               <div
                 key={alumni._id}
-                className="bg-white border border-gray-200 rounded-2xl shadow hover:shadow-lg transition overflow-hidden flex flex-col"
+                className="bg-white border border-gray-200 rounded-2xl shadow hover:shadow-lg hover:scale-105 transition-transform duration-300 overflow-hidden flex flex-col hover:bg-blue-50"
               >
                 <div className="flex items-center p-4 border-b">
                   <img
