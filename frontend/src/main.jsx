@@ -25,22 +25,21 @@ import GiveBack from './components/GiveBack.jsx';
 import DonateSponsor from './components/DonateSponsor.jsx'; // ✅ Import donation component
 import CollegeBlogs from './components/CollegeBlogs.jsx'; // 👈 import it
 import Applicants from './components/Applicants.jsx';
-import GlobalChat from './components/Globalchat.jsx';
-import AddBlogPaper from './components/AddBlogPapers.jsx';
-
-
+import GlobalChat from './components/GlobalChat.jsx'; // Ensure this is the correct import name
+import AddBlogPaper from './components/AddBlogPapers.jsx'; // 👈 import AddBlogPaper component
+import EditBlogPaper from './components/EditBlogPaper.jsx'; // 👈 import EditBlogPaper component
 
 
 const router = createBrowserRouter(
   createRoutesFromElements(
-    <Route path="/" element={<App />}>
-      <Route path="" element={<Home />} />
+    <Route path="/" element={<App />} >
+      <Route index element={<Home />} />  {/* Use index for default path */}
       <Route path="about" element={<About />} />
       <Route path="contact" element={<Contact />} />
       <Route path="login" element={<Login />} />
       <Route path="signup" element={<Signup />} />
       <Route path="alumini" element={<Alumini />} />
-      <Route path="profile/:id" element={<Profile />} />
+      <Route path="profile/:id" element={<Profile />} />  {/* Profile page with dynamic user ID */}
       <Route path="events" element={<Events />} />
       <Route path="update-profile/:id" element={<EditProfile />} />
       <Route path="chat/:receiverId" element={<Chat />} />
@@ -49,9 +48,10 @@ const router = createBrowserRouter(
       <Route path="give-back" element={<GiveBack />} />
       <Route path="donate" element={<DonateSponsor />} /> {/* ✅ Donate page */}
       <Route path="collegeBlogs" element={<CollegeBlogs />} />  
-      <Route path="/jobs/:jobId/applicants" element={<Applicants />} />
-      <Route path="/global-chat" element={<GlobalChat  />} />
-      <Route path="/add-blog-paper" element={<AddBlogPaper  />} />
+      <Route path="jobs/:jobId/applicants" element={<Applicants />} />
+      <Route path="global-chat" element={<GlobalChat />} />
+      <Route path="add-blog-paper" element={<AddBlogPaper />} />
+      <Route path="edit-blog-paper/:id" element={<EditBlogPaper />} />  {/* New route for editing blog/paper */}
     </Route>
   )
 );

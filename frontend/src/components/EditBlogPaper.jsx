@@ -1,55 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom'; // If you want to navigate after submission
+import { useNavigate, useParams } from 'react-router-dom';
 
-const AddBlogPaper = () => {
+const EditBlogPaper = () => {
+  const { id } = useParams();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [content, setContent] = useState('');
   const [author, setAuthor] = useState('');
-  const [type, setType] = useState('blog'); // 'blog' or 'paper'
+  const [type, setType] = useState('blog');
   const [fileLink, setFileLink] = useState('');
-  const navigate = useNavigate(); // To navigate after submitting
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchBlogPaper = async () => {
+      try {
+        const response = await axios.get(`http://localhost:8000/api/v1/blogs/${id}`);
+        const blogPaperData = response.data;
+        setTitle(blogPaperData.title);
+        setDescription(blogPaperData.description);
+        setContent(blogPaperData.content);
+        setAuthor(blogPaperData.author);
+        setType(blogPaperData.type);
+        setFileLink(blogPaperData.fileLink || '');
+      } catch (error) {
+        console.error('Error fetching blog/paper data', error);
+      }
+    };
+
+    fetchBlogPaper();
+  }, [id]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Get current user from localStorage
-    const currentUser = JSON.parse(localStorage.getItem('user'));
-
-    if (!currentUser || !currentUser._id) {
-      alert('You must be logged in to submit a blog or paper.');
-      return;
-    }
+    setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:8000/api/v1/blogs/add', {
+      const user = JSON.parse(localStorage.getItem('user'));
+      const userId = user?._id;
+
+      if (!userId) {
+        alert('User not logged in');
+        return;
+      }
+
+      const response = await axios.put(`http://localhost:8000/api/v1/blogs/edit/${id}`, {
         title,
         description,
         content,
-        author: currentUser.fullName, // Assuming currentUser has name
-        authorId: currentUser._id, // Send authorId from the logged-in user
+        author,
         type,
         fileLink,
+        userId, // ✅ Sending userId for authorization
       });
 
       alert(response.data.message);
-      setTitle('');
-      setDescription('');
-      setContent('');
-      setAuthor('');
-      setType('blog');
-      setFileLink('');
-      navigate('/collegeBlogs'); // Redirect after submission
+      navigate('/collegeBlogs');
     } catch (err) {
-      console.error('Error submitting the blog/paper:', err);
-      alert('Failed to submit the blog or paper.');
+      console.error('Error updating blog/paper:', err);
+      alert('Failed to update blog or paper.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="max-w-4xl mx-auto mt-8 p-8 bg-white rounded-lg shadow-lg border border-gray-200">
-      <h2 className="text-3xl font-semibold text-center text-blue-700 mb-8">Submit New Blog or Research Paper</h2>
+      <h2 className="text-3xl font-semibold text-center text-blue-700 mb-8">Edit Blog or Research Paper</h2>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="flex flex-col">
           <label htmlFor="title" className="font-medium text-gray-700">Title</label>
@@ -131,13 +149,14 @@ const AddBlogPaper = () => {
 
         <button
           type="submit"
+          disabled={loading}
           className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
         >
-          Submit
+          {loading ? 'Updating...' : 'Update'}
         </button>
       </form>
     </div>
   );
 };
 
-export default AddBlogPaper;
+export default EditBlogPaper;
