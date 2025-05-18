@@ -1,6 +1,7 @@
 import Application from '../models/application.model.js';
 import Job from '../models/job.model.js';
 import { User } from '../models/user.model.js';
+import { fileUploaderOnCloudinary } from '../utils/cloudinary.js';
 
 // Apply for a job
 export const applyForJob = async (req, res) => {
@@ -20,7 +21,13 @@ export const applyForJob = async (req, res) => {
       return res.status(400).json({ message: 'Resume file is required' });
     }
 
-    const resumeUrl = `/public/uploads/${req.file.filename}`;
+    // Upload resume to Cloudinary
+    const uploadedResume = await fileUploaderOnCloudinary(req.file.path);
+    if (!uploadedResume?.url) {
+      return res.status(500).json({ message: 'Resume upload failed' });
+    }
+
+    const resumeUrl = uploadedResume.url;
 
     const application = await Application.create({
       jobId,
@@ -70,14 +77,15 @@ export const getApplicantsForJob = async (req, res) => {
       .populate('userId', 'fullName email avatar')
       .select('resumeUrl userId appliedAt');
 
-    res.status(200).json({ applications });
+      console.log(applications)
+    return res.status(200).json({ applications });
   } catch (err) {
     console.error('Get Applicants Error:', err);
-    res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
-// ✅ Update resume for a specific application
+// Update resume for a specific application
 export const updateApplication = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -98,8 +106,13 @@ export const updateApplication = async (req, res) => {
       return res.status(400).json({ message: 'Resume file is required for update' });
     }
 
-    const resumeUrl = `/public/uploads/${req.file.filename}`;
-    application.resumeUrl = resumeUrl;
+    // ✅ Upload new resume to Cloudinary
+    const uploadedResume = await fileUploaderOnCloudinary(req.file.path);
+    if (!uploadedResume?.url) {
+      return res.status(500).json({ message: 'Resume upload failed' });
+    }
+
+    application.resumeUrl = uploadedResume.url;
     await application.save();
 
     res.status(200).json({ message: 'Application updated successfully', application });
@@ -108,3 +121,4 @@ export const updateApplication = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+

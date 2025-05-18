@@ -54,7 +54,7 @@ const Applicants = () => {
 
               {app.resumeUrl ? (
                 <a
-                  href={`http://localhost:8000${app.resumeUrl}`}
+                  href={app.resumeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-block mt-3 px-4 py-2 bg-blue-600 text-white rounded-md shadow-md hover:bg-blue-700 hover:shadow-lg transition-all text-sm"
